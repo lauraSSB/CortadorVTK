@@ -8,13 +8,16 @@
 
 #include <vtkActor.h>
 #include <vtkAxesActor.h>
+#include <vtkButtonWidget.h>
 #include <vtkCallbackCommand.h>
 #include <vtkClipVolume.h>
 #include <vtkColorTransferFunction.h>
 #include <vtkCommand.h>
 #include <vtkFixedPointVolumeRayCastMapper.h>
+#include <vtkImageData.h>
 #include <vtkImageShrink3D.h>
 #include <vtkInteractorStyleSwitch.h>
+#include <vtkMarchingCubes.h>
 #include <vtkMetaImageReader.h>
 #include <vtkNamedColors.h>
 #include <vtkNew.h>
@@ -29,10 +32,32 @@
 #include <vtkRenderWindow.h>
 #include <vtkRenderWindowInteractor.h>
 #include <vtkRenderer.h>
+#include <vtkTextProperty.h>
+#include <vtkTextRenderer.h>
+#include <vtkTexturedButtonRepresentation2D.h>
 #include <vtkUnstructuredGrid.h>
 #include <vtkUnstructuredGridVolumeRayCastMapper.h>
 #include <vtkVolume.h>
 #include <vtkVolumeProperty.h>
+
+struct ToggleData {
+  vtkVolume *volume;
+  vtkActor *mesh;
+  vtkRenderWindow *window;
+};
+
+void ToggleVolumeMesh(vtkObject *caller, unsigned long, void *client_data,
+                      void *) {
+  auto *widget = static_cast<vtkButtonWidget *>(caller);
+  auto *rep = vtkTexturedButtonRepresentation2D::SafeDownCast(
+      widget->GetRepresentation());
+  auto *data = static_cast<ToggleData *>(client_data);
+
+  bool showMesh = (rep->GetState() == 1);
+  data->volume->SetVisibility(!showMesh);
+  data->mesh->SetVisibility(showMesh);
+  data->window->Render();
+}
 
 // El Widget del plano simplemente se encarga de interactuar con el plano y la
 // escena. Cuando se va a hacer el clip, vtkClipVolume solo recibe funciones
@@ -192,7 +217,7 @@ int main(int argc, char **argv) {
   // submuestreo para reducir tiempo de carga
   vtkNew<vtkImageShrink3D> shrink;
   shrink->SetInputConnection(volume_reader->GetOutputPort());
-  shrink->SetShrinkFactors(4, 4, 4);
+  shrink->SetShrinkFactors(8, 8, 8);
   shrink->AveragingOn();
 
   // Hace el corte del volumen
@@ -218,6 +243,22 @@ int main(int argc, char **argv) {
   clipped_volume->SetMapper(clip_mapper);
   clipped_volume->SetProperty(volume_properties);
 
+  // Malla
+  vtkNew<vtkMarchingCubes> marchingCubes;
+  marchingCubes->SetInputConnection(volume_reader->GetOutputPort());
+  marchingCubes->SetValue(0, 300.0); // isovalor fijo
+  marchingCubes->ComputeNormalsOn();
+
+  vtkNew<vtkPolyDataMapper> meshMapper;
+  meshMapper->SetInputConnection(marchingCubes->GetOutputPort());
+
+  vtkNew<vtkActor> meshActor;
+  meshActor->SetMapper(meshMapper);
+  meshActor->GetProperty()->SetColor(0.9, 0.75, 0.6);
+  meshActor->GetProperty()->SetSpecular(0.3);
+  meshActor->GetProperty()->SetSpecularPower(20.0);
+  meshActor->SetVisibility(0);
+
   // Orientacion
   vtkNew<vtkAxesActor> axesActor;
   vtkNew<vtkOrientationMarkerWidget> axesWidget;
@@ -229,15 +270,55 @@ int main(int argc, char **argv) {
   axesWidget->SetEnabled(1);
   axesWidget->InteractiveOn();
 
+  // Boton
+  vtkNew<vtkTextProperty> textProp;
+  textProp->SetFontSize(24);
+  textProp->SetColor(1, 1, 1);
+  textProp->SetBackgroundColor(0.1, 0.2, 0.6);
+  textProp->SetBackgroundOpacity(1.0);
+  textProp->SetJustificationToCentered();
+  textProp->SetVerticalJustificationToCentered();
+
+  vtkNew<vtkImageData> texVolumen;
+  vtkNew<vtkImageData> texMalla;
+  int textDims[2];
+
+  vtkTextRenderer::GetInstance()->RenderString(textProp, "Volumen", texVolumen,
+                                               textDims, 96);
+  vtkTextRenderer::GetInstance()->RenderString(textProp, "Malla", texMalla,
+                                               textDims, 96);
+
+  vtkNew<vtkTexturedButtonRepresentation2D> buttonRep;
+  buttonRep->SetNumberOfStates(2);
+  buttonRep->SetButtonTexture(0, texVolumen);
+  buttonRep->SetButtonTexture(1, texMalla);
+
+  vtkNew<vtkButtonWidget> buttonWidget;
+  buttonWidget->SetInteractor(iren);
+  buttonWidget->SetRepresentation(buttonRep);
+  buttonWidget->SetEnabled(1);
+
+  double buttonBounds[6] = {10.0, 210.0, 730.0, 790.0, 0.0, 0.0};
+  buttonRep->PlaceWidget(buttonBounds);
+
+  ToggleData toggleData{clipped_volume.GetPointer(), meshActor.GetPointer(),
+                        win.GetPointer()};
+
+  vtkNew<vtkCallbackCommand> buttonCallback;
+  buttonCallback->SetCallback(ToggleVolumeMesh);
+  buttonCallback->SetClientData(&toggleData);
+  buttonWidget->AddObserver(vtkCommand::StateChangedEvent, buttonCallback);
+
   // Add actors
   ren->AddViewProp(clipped_volume);
+  ren->AddViewProp(meshActor);
   ren->AddViewProp(outlineActor);
 
   // Centrar camara en escena
   ren->ResetCamera();
 
   // Finish setup and start main loop
-  win->SetSize(800, 800);
+  win->SetSize(600, 600);
   win->SetWindowName("Volume slicer");
   win->Render();
   iren->Start();
