@@ -7,6 +7,7 @@
 #include <string>
 
 #include <vtkActor.h>
+#include <vtkAxesActor.h>
 #include <vtkCallbackCommand.h>
 #include <vtkClipVolume.h>
 #include <vtkColorTransferFunction.h>
@@ -17,6 +18,7 @@
 #include <vtkMetaImageReader.h>
 #include <vtkNamedColors.h>
 #include <vtkNew.h>
+#include <vtkOrientationMarkerWidget.h>
 #include <vtkOutlineFilter.h>
 #include <vtkOutlineSource.h>
 #include <vtkPiecewiseFunction.h>
@@ -202,26 +204,6 @@ int main(int argc, char **argv) {
   clip->InsideOutOn();
   clip->SetMixed3DCellGeneration(false);
 
-  // Envolvente para limitar el recorte
-  clip->Update();
-  // Datos fuente del recorte
-  vtkUnstructuredGrid *clippedGrid = clip->GetOutput();
-  double bounds[6];
-  clippedGrid->GetBounds(bounds);
-
-  // Construir una caja envolvente
-  vtkNew<vtkOutlineSource> outlineSource;
-  outlineSource->SetBounds(bounds);
-  outlineSource->Update();
-
-  vtkNew<vtkPolyDataMapper> clippedOutlineMapper;
-  clippedOutlineMapper->SetInputConnection(outlineSource->GetOutputPort());
-
-  vtkNew<vtkActor> clippedOutlineActor;
-  clippedOutlineActor->SetMapper(clippedOutlineMapper);
-  clippedOutlineActor->GetProperty()->SetColor(1.0, 1.0, 0.0);
-  clippedOutlineActor->GetProperty()->SetLineWidth(2.0);
-
   // Actualizar el plano cuando se suelta el widget
   vtkNew<vtkCallbackCommand> plane_cb;
   plane_cb->SetCallback(UpdatePlane);
@@ -236,9 +218,23 @@ int main(int argc, char **argv) {
   clipped_volume->SetMapper(clip_mapper);
   clipped_volume->SetProperty(volume_properties);
 
+  // Orientacion
+  vtkNew<vtkAxesActor> axesActor;
+  vtkNew<vtkOrientationMarkerWidget> axesWidget;
+  axesWidget->SetOutlineColor(0.93, 0.57, 0.13);
+  axesWidget->SetOrientationMarker(axesActor);
+  axesWidget->SetInteractor(iren);
+  axesWidget->SetViewport(0.0, 0.0, 0.2, 0.2);
+  axesWidget->SetDefaultRenderer(ren);
+  axesWidget->SetEnabled(1);
+  axesWidget->InteractiveOn();
+
   // Add actors
   ren->AddViewProp(clipped_volume);
   ren->AddViewProp(outlineActor);
+
+  // Centrar camara en escena
+  ren->ResetCamera();
 
   // Finish setup and start main loop
   win->SetSize(800, 800);
