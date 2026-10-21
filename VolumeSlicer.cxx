@@ -19,6 +19,23 @@
 #include <vtkVolume.h>
 #include <vtkVolumeProperty.h>
 #include <vtkPlaneWidget.h>
+#include <vtkCallbackCommand.h>
+#include <vtkClipVolume.h>
+#include <vtkCommand.h>
+#include <vtkPlane.h>
+#include <vtkUnstructuredGrid.h>
+
+//El Widget del plano simplemente se encarga de interactuar con el plano y la escena. 
+//Cuando se va a hacer el clip, vtkClipVolume solo recibe funciones implicitas (vtkWidgetPlane) no es función implicita
+//Por eso se necesita este callback para actualizar el plano cuando se interactua con el widget
+void UpdatePlane( vtkObject* caller, unsigned long, void* client_data, void* )
+{
+  auto* widget = static_cast< vtkPlaneWidget* >( caller );
+  auto* plane = static_cast< vtkPlane* >( client_data );
+  widget->GetPlane( plane );
+  std::cout << "origen: " << plane->GetOrigin( )[ 0 ] << " "
+  << plane->GetOrigin( )[ 1 ] << " " << plane->GetOrigin( )[ 2 ] << std::endl;
+}
 
 int main( int argc, char** argv )
 {
@@ -157,6 +174,8 @@ int main( int argc, char** argv )
   iren->SetRenderWindow( win );
   iren->SetInteractorStyle( style );
 
+  volume_reader->Update( );
+  
   //Crea el plano de corte y lo activa, lo relaciona con el interactuador y con el volumen
   plane_widget->SetInteractor( iren );
   plane_widget->SetInputConnection( volume_reader->GetOutputPort( ) );
@@ -164,6 +183,23 @@ int main( int argc, char** argv )
   plane_widget->PlaceWidget( );
   plane_widget->On();
 
+  // DEclarar el plano que usará el bisturí y obtenerlo del widget
+  vtkNew< vtkPlane > plane;
+  plane_widget->GetPlane( plane );
+
+  // Hace el corte del volumen
+  vtkNew< vtkClipVolume > clip;
+  clip->SetInputConnection( volume_reader->GetOutputPort( ) );
+  clip->SetClipFunction( plane );
+  clip->SetValue( 0.0 );
+  clip->InsideOutOn( );
+  clip->SetMixed3DCellGeneration( false );
+
+  // Actualizar el plano cuando se suelta el widget
+  vtkNew< vtkCallbackCommand > plane_cb;
+  plane_cb->SetCallback( UpdatePlane );
+  plane_cb->SetClientData( plane.GetPointer( ) );
+  plane_widget->AddObserver( vtkCommand::EndInteractionEvent, plane_cb );
 
   // Add actors
   ren->AddViewProp( volume );
@@ -171,6 +207,8 @@ int main( int argc, char** argv )
   // Finish setup and start main loop
   win->SetSize( 800, 800 );
   win->SetWindowName( "Volume slicer" );
+  clip->Update( );
+  std::cout << "celdas: " << clip->GetOutput( )->GetNumberOfCells( ) << std::endl;
   win->Render( );
   iren->Start( );
 
