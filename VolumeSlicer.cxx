@@ -18,6 +18,7 @@
 #include <vtkRenderWindowInteractor.h>
 #include <vtkVolume.h>
 #include <vtkVolumeProperty.h>
+#include <vtkPlaneWidget.h>
 
 int main( int argc, char** argv )
 {
@@ -144,15 +145,25 @@ int main( int argc, char** argv )
 
   // Prepare rendering objects
   vtkNew< vtkInteractorStyleSwitch > style;
+  vtkNew< vtkPlaneWidget > plane_widget;
   vtkNew< vtkRenderer > ren;
   vtkNew< vtkRenderWindow > win;
   vtkNew< vtkRenderWindowInteractor > iren;
+
 
   style->SetCurrentStyleToTrackballCamera( );
   ren->SetBackground( 0.7, 0.7, 0.7 );
   win->AddRenderer( ren );
   iren->SetRenderWindow( win );
   iren->SetInteractorStyle( style );
+
+  //Crea el plano de corte y lo activa, lo relaciona con el interactuador y con el volumen
+  plane_widget->SetInteractor( iren );
+  plane_widget->SetInputConnection( volume_reader->GetOutputPort( ) );
+  plane_widget->SetPlaceFactor( 1.0 );
+  plane_widget->PlaceWidget( );
+  plane_widget->On();
+
 
   // Add actors
   ren->AddViewProp( volume );
