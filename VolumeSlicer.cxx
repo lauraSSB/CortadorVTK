@@ -24,6 +24,7 @@
 #include <vtkCommand.h>
 #include <vtkPlane.h>
 #include <vtkUnstructuredGrid.h>
+#include <vtkUnstructuredGridVolumeRayCastMapper.h>
 
 //El Widget del plano simplemente se encarga de interactuar con el plano y la escena. 
 //Cuando se va a hacer el clip, vtkClipVolume solo recibe funciones implicitas (vtkWidgetPlane) no es función implicita
@@ -175,7 +176,7 @@ int main( int argc, char** argv )
   iren->SetInteractorStyle( style );
 
   volume_reader->Update( );
-  
+
   //Crea el plano de corte y lo activa, lo relaciona con el interactuador y con el volumen
   plane_widget->SetInteractor( iren );
   plane_widget->SetInputConnection( volume_reader->GetOutputPort( ) );
@@ -201,14 +202,20 @@ int main( int argc, char** argv )
   plane_cb->SetClientData( plane.GetPointer( ) );
   plane_widget->AddObserver( vtkCommand::EndInteractionEvent, plane_cb );
 
+  // Mapper y volumen para mostrar el resultado del corte
+  vtkNew< vtkUnstructuredGridVolumeRayCastMapper > clip_mapper;
+  clip_mapper->SetInputConnection( clip->GetOutputPort( ) );
+
+  vtkNew< vtkVolume > clipped_volume;
+  clipped_volume->SetMapper( clip_mapper );
+  clipped_volume->SetProperty( volume_properties );
+
   // Add actors
-  ren->AddViewProp( volume );
+  ren->AddViewProp( clipped_volume );
 
   // Finish setup and start main loop
   win->SetSize( 800, 800 );
   win->SetWindowName( "Volume slicer" );
-  clip->Update( );
-  std::cout << "celdas: " << clip->GetOutput( )->GetNumberOfCells( ) << std::endl;
   win->Render( );
   iren->Start( );
 
